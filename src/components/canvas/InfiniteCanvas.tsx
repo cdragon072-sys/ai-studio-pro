@@ -8,7 +8,7 @@ import CanvasToolbar from './CanvasToolbar';
 export default function InfiniteCanvas() {
   const {
     viewportX, viewportY, zoom,
-    nodes, connections, selectedNodeId, connectingFrom,
+    nodes, connections, connectingFrom,
     panBy, zoomTo, selectNode, cancelConnection,
     openAddMenu, closeAddMenu, showAddMenu, addMenuPosition,
     loadFromStorage,
@@ -128,7 +128,10 @@ export default function InfiniteCanvas() {
           {connections.map(conn => {
             const from = getPortPos(conn.fromNodeId, conn.fromSide);
             const to = getPortPos(conn.toNodeId, conn.toSide);
-            return <ConnectionLine key={conn.id} from={from} to={to} />;
+            // Detect data type from source node
+            const fromNode = nodes.find(n => n.id === conn.fromNodeId);
+            const dataType = fromNode?.videoUrl ? 'video' : fromNode?.imageUrl || fromNode?.resultUrl ? 'image' : fromNode?.text ? 'text' : 'mixed';
+            return <ConnectionLine key={conn.id} from={from} to={to} dataType={dataType as any} />;
           })}
           {connectingFrom && (
             <ConnectionLine

@@ -1,8 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { useCanvasStore, type CanvasNodeData } from '../../stores/canvasStore';
-import TextNode from './nodes/TextNode';
-import ImageNode from './nodes/ImageNode';
-import VideoNode from './nodes/VideoNode';
+import UnifiedNodeContent from './nodes/UnifiedNodeContent';
 import StoryboardGridNode from './nodes/StoryboardGridNode';
 import NodeGenerationPanel from './NodeGenerationPanel';
 
@@ -53,9 +51,10 @@ export default function CanvasNode({ node }: Props) {
   // Render inner content by type
   const renderContent = () => {
     switch (node.type) {
-      case 'text': return <TextNode node={node} />;
-      case 'image': return <ImageNode node={node} />;
-      case 'video': return <VideoNode node={node} />;
+      case 'text':
+      case 'image':
+      case 'video':
+        return <UnifiedNodeContent node={node} />;
       case 'storyboard': return <StoryboardGridNode node={node} />;
       case 'upload': return (
         <div className="canvas-node-upload">

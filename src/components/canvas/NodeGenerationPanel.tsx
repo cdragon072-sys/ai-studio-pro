@@ -7,9 +7,18 @@ interface Props {
   node: CanvasNodeData;
 }
 
+type ModelCategory = 'all' | 'chat' | 'image' | 'video';
+
+const MODEL_CATEGORIES: { id: ModelCategory; label: string; icon: string }[] = [
+  { id: 'all', label: '全部', icon: '⊞' },
+  { id: 'chat', label: '文本', icon: '📝' },
+  { id: 'image', label: '图片', icon: '🖼️' },
+  { id: 'video', label: '视频', icon: '🎬' },
+];
+
 /**
- * 节点附属生成面板 - 选中节点时显示在节点下方
- * 参考 LibLib.tv 的交互模式
+ * 统一生成面板 - 每个节点都能选择任意类型的模型
+ * 选择的模型类型自动决定生成行为
  */
 export default function NodeGenerationPanel({ node }: Props) {
   const { updateNode, addHistory, nodes, connections } = useCanvasStore();
@@ -23,6 +32,15 @@ export default function NodeGenerationPanel({ node }: Props) {
   const [genError, setGenError] = useState('');
   const [useScreenwritingSkill, setUseScreenwritingSkill] = useState(false);
   const [screenwritingFormat, setScreenwritingFormat] = useState('short');
+  const [modelCategory, setModelCategory] = useState<ModelCategory>('all');
+
+  // Set default model category based on node type
+  useEffect(() => {
+    if (node.type === 'text') setModelCategory('chat');
+    else if (node.type === 'image') setModelCategory('image');
+    else if (node.type === 'video') setModelCategory('video');
+    else setModelCategory('all');
+  }, [node.type]);
 
   // Sync prompt from node when switching
   useEffect(() => {
@@ -45,61 +63,90 @@ export default function NodeGenerationPanel({ node }: Props) {
     const conns = connections.filter(c => c.toNodeId === node.id);
     for (const c of conns) {
       const fromNode = nodes.find(n => n.id === c.fromNodeId);
-      if (fromNode?.type === 'text' && fromNode.text) return fromNode.text;
+      if (fromNode?.text) return fromNode.text;
     }
     return '';
+  };
+
+  // Get connected input videos
+  const getInputVideos = () => {
+    const conns = connections.filter(c => c.toNodeId === node.id);
+    return conns.map(c => {
+      const fromNode = nodes.find(n => n.id === c.fromNodeId);
+      return fromNode?.videoUrl;
+    }).filter(Boolean) as string[];
   };
 
   const inputImages = getInputImages();
   const inputText = getInputText();
+  const inputVideos = getInputVideos();
 
-  // Get mode label
-  const getModeLabel = () => {
-    if (node.type === 'text') {
-      return node.textMode === 'text2video' ? '文生视频' : node.textMode === 'img2prompt' ? '图片反推' : '';
-    }
-    if (node.type === 'image') {
-      if (inputImages.length > 0) return '图生图';
-      return '文生图';
-    }
-    if (node.type === 'video') {
-      if (inputImages.length > 0) return '图生视频';
-      return '文生视频';
-    }
-    return '';
-  };
-
-  // Available models based on node type
+  // All models from all providers, with category filtering
   const getModels = () => {
-    const allModels: { id: string; name: string; provider: string; providerId: string; icon: string; providerType: string }[] = [];
+    const allModels: { id: string; name: string; provider: string; providerId: string; icon: string; providerType: string; modelType: string }[] = [];
     providers.forEach(p => {
       if (!p.enabled) return;
       p.models.forEach(m => {
-        const isImage = m.type === 'text-to-image' || m.type === 'image-to-image';
-        const isVideo = m.type === 'text-to-video' || m.type === 'image-to-video';
-        const isChat = m.type === 'chat';
-        if (node.type === 'image' && isImage) {
-          allModels.push({ id: m.id, name: m.name, provider: p.name, providerId: p.id, icon: p.icon, providerType: p.type });
-        } else if (node.type === 'video' && isVideo) {
-          allModels.push({ id: m.id, name: m.name, provider: p.name, providerId: p.id, icon: p.icon, providerType: p.type });
-        } else if (node.type === 'text' && (isChat || isImage)) {
-          allModels.push({ id: m.id, name: m.name, provider: p.name, providerId: p.id, icon: p.icon, providerType: p.type });
-        }
+        allModels.push({
+          id: m.id,
+          name: m.name,
+          provider: p.name,
+          providerId: p.id,
+          icon: p.icon,
+          providerType: p.type,
+          modelType: m.type,
+        });
       });
     });
+
+    // Filter by selected category
+    if (modelCategory === 'chat') {
+      return allModels.filter(m => m.modelType === 'chat');
+    }
+    if (modelCategory === 'image') {
+      return allModels.filter(m => m.modelType === 'text-to-image' || m.modelType === 'image-to-image');
+    }
+    if (modelCategory === 'video') {
+      return allModels.filter(m => m.modelType === 'text-to-video' || m.modelType === 'image-to-video');
+    }
     return allModels;
   };
 
   const models = getModels();
   const currentModel = models.find(m => m.id === selectedModel) || models[0];
 
-  // Auto-fill prompt from connected text node
+  // Determine what kind of generation this will be based on selected model
+  const getGenType = (): 'chat' | 'image' | 'video' => {
+    if (!currentModel) return 'chat';
+    if (currentModel.modelType === 'chat') return 'chat';
+    if (currentModel.modelType === 'text-to-image' || currentModel.modelType === 'image-to-image') return 'image';
+    if (currentModel.modelType === 'text-to-video' || currentModel.modelType === 'image-to-video') return 'video';
+    return 'chat';
+  };
+
+  // Get smart mode label based on selected model + connected inputs
+  const getModeLabel = () => {
+    const genType = getGenType();
+    if (genType === 'chat') return '💬 AI 对话';
+    if (genType === 'image') {
+      return inputImages.length > 0 ? '🖼️ 图生图' : '🖼️ 文生图';
+    }
+    if (genType === 'video') {
+      if (inputImages.length > 0) return '🎬 图生视频';
+      return '🎬 文生视频';
+    }
+    return '';
+  };
+
+  // Auto-fill prompt from connected text node  
   useEffect(() => {
     if (inputText && !prompt) setPrompt(inputText);
   }, [inputText]);
 
+  // ======= GENERATION HANDLER =======
   const handleGenerate = async () => {
-    const finalPrompt = prompt.trim() || inputText;
+    // Use node.text as fallback prompt if prompt is empty
+    const finalPrompt = prompt.trim() || node.text?.trim() || inputText;
     if (!finalPrompt && !inputImages.length) return;
     if (!currentModel) { setGenError('请先选择模型'); setGenStatus('error'); return; }
 
@@ -112,11 +159,39 @@ export default function NodeGenerationPanel({ node }: Props) {
     updateNode(node.id, { status: 'generating', prompt: finalPrompt, model: currentModel.id });
 
     try {
+      const genType = getGenType();
       const { apiRequest, pollTaskResult } = await import('../../services/api-client');
       const config = { baseUrl: provider.baseUrl, apiKey: provider.apiKey };
 
-      // =========== IMAGE NODE ===========
-      if (node.type === 'image') {
+      // =========== CHAT / TEXT GENERATION ===========
+      if (genType === 'chat') {
+        const { streamChatRequest } = await import('../../services/api-client');
+        let result = '';
+        const messages: Array<{ role: string; content: string }> = [];
+        
+        // Inject screenwriting master system prompt if skill is active
+        if (useScreenwritingSkill) {
+          const formatInfo = SCREENWRITING_FORMATS.find(f => f.id === screenwritingFormat);
+          const systemContent = SCREENWRITING_SYSTEM_PROMPT + 
+            `\n\n用户选择的格式：${formatInfo?.name || '叙事短片'}（${formatInfo?.duration || '5-10分钟'}）`;
+          messages.push({ role: 'system', content: systemContent });
+        }
+        
+        messages.push({ role: 'user', content: finalPrompt });
+        
+        await streamChatRequest(
+          config,
+          messages,
+          currentModel.id,
+          (chunk) => { result += chunk; updateNode(node.id, { text: result }); },
+          () => { updateNode(node.id, { status: 'completed' }); setGenStatus('done'); },
+          (err) => { throw new Error(err); }
+        );
+        return;
+      }
+
+      // =========== IMAGE GENERATION ===========
+      if (genType === 'image') {
         let endpoint = '/v1/draw/completions';
         const body: any = { model: currentModel.id, prompt: finalPrompt };
 
@@ -129,7 +204,6 @@ export default function NodeGenerationPanel({ node }: Props) {
         }
 
         const submitResult = await apiRequest(config, endpoint, body);
-        console.log('[GEN] Submit:', submitResult);
         if (!submitResult.success) throw new Error(submitResult.error || '提交失败');
 
         const taskId = submitResult.data?.id || submitResult.data?.taskId || submitResult.data?.data?.id;
@@ -159,8 +233,8 @@ export default function NodeGenerationPanel({ node }: Props) {
         return;
       }
 
-      // =========== VIDEO NODE ===========
-      if (node.type === 'video') {
+      // =========== VIDEO GENERATION ===========
+      if (genType === 'video') {
         let endpoint = '/v1/video/sora-video';
         const body: any = { model: currentModel.id, prompt: finalPrompt };
 
@@ -198,33 +272,6 @@ export default function NodeGenerationPanel({ node }: Props) {
         return;
       }
 
-      // =========== TEXT NODE (Chat) ===========
-      if (node.type === 'text') {
-        const { streamChatRequest } = await import('../../services/api-client');
-        let result = '';
-        const messages: Array<{ role: string; content: string }> = [];
-        
-        // Inject screenwriting master system prompt if skill is active
-        if (useScreenwritingSkill) {
-          const formatInfo = SCREENWRITING_FORMATS.find(f => f.id === screenwritingFormat);
-          const systemContent = SCREENWRITING_SYSTEM_PROMPT + 
-            `\n\n用户选择的格式：${formatInfo?.name || '叙事短片'}（${formatInfo?.duration || '5-10分钟'}）`;
-          messages.push({ role: 'system', content: systemContent });
-        }
-        
-        messages.push({ role: 'user', content: finalPrompt });
-        
-        await streamChatRequest(
-          config,
-          messages,
-          currentModel.id,
-          (chunk) => { result += chunk; updateNode(node.id, { text: result }); },
-          () => { updateNode(node.id, { status: 'completed' }); setGenStatus('done'); },
-          (err) => { throw new Error(err); }
-        );
-        return;
-      }
-
     } catch (err: any) {
       console.error('[GEN ERROR]', err);
       setGenError(err.message || '生成失败');
@@ -244,31 +291,29 @@ export default function NodeGenerationPanel({ node }: Props) {
 
   return (
     <div className="node-gen-panel" onMouseDown={e => e.stopPropagation()}>
-      {/* Skill pills for text node */}
-      {node.type === 'text' && (
-        <div className="node-gen-skills">
-          <button
-            className={`node-gen-skill-pill ${useScreenwritingSkill ? 'active' : ''}`}
-            onClick={() => setUseScreenwritingSkill(!useScreenwritingSkill)}
-            title="启用山音超级编剧大师技能"
+      {/* Skill pills (available for ALL node types now) */}
+      <div className="node-gen-skills">
+        <button
+          className={`node-gen-skill-pill ${useScreenwritingSkill ? 'active' : ''}`}
+          onClick={() => setUseScreenwritingSkill(!useScreenwritingSkill)}
+          title="启用山音超级编剧大师技能"
+        >
+          🎬 编剧大师
+        </button>
+        {useScreenwritingSkill && (
+          <select
+            className="node-gen-select"
+            value={screenwritingFormat}
+            onChange={e => setScreenwritingFormat(e.target.value)}
           >
-            🎬 编剧大师
-          </button>
-          {useScreenwritingSkill && (
-            <select
-              className="node-gen-select"
-              value={screenwritingFormat}
-              onChange={e => setScreenwritingFormat(e.target.value)}
-            >
-              {SCREENWRITING_FORMATS.map(f => (
-                <option key={f.id} value={f.id}>{f.icon} {f.name} ({f.duration})</option>
-              ))}
-            </select>
-          )}
-        </div>
-      )}
+            {SCREENWRITING_FORMATS.map(f => (
+              <option key={f.id} value={f.id}>{f.icon} {f.name} ({f.duration})</option>
+            ))}
+          </select>
+        )}
+      </div>
 
-      {/* Mode label + connected thumbnails */}
+      {/* Connected inputs display */}
       <div className="node-gen-top">
         {modeLabel && <span className="node-gen-mode">{modeLabel}</span>}
         {inputImages.length > 0 && (
@@ -276,7 +321,13 @@ export default function NodeGenerationPanel({ node }: Props) {
             {inputImages.map((url, i) => (
               <img key={i} src={url} alt="" className="node-gen-thumb" />
             ))}
-            <button className="node-gen-thumb-add" title="添加参考图">+</button>
+          </div>
+        )}
+        {inputVideos.length > 0 && (
+          <div className="node-gen-thumbs">
+            {inputVideos.map((_url, i) => (
+              <div key={i} className="node-gen-thumb node-gen-thumb-video" title="已连接视频">🎬</div>
+            ))}
           </div>
         )}
       </div>
@@ -293,7 +344,9 @@ export default function NodeGenerationPanel({ node }: Props) {
 
       {/* Error display */}
       {genStatus === 'error' && genError && (
-        <div className="node-gen-error">⚠️ {genError}</div>
+        <div className="node-gen-error" onClick={() => { setGenStatus('idle'); setGenError(''); }}>
+          ⚠️ {genError} <span style={{opacity:0.5, fontSize:'10px'}}>点击清除</span>
+        </div>
       )}
 
       {/* Controls row */}
@@ -309,22 +362,42 @@ export default function NodeGenerationPanel({ node }: Props) {
 
         {showModelPicker && (
           <div className="node-gen-model-picker">
-            {models.length === 0 && (
-              <div className="node-gen-no-models">无可用模型，请在设置中启用</div>
-            )}
-            {models.map(m => (
-              <button
-                key={`${m.providerId}-${m.id}`}
-                className={`node-gen-model-option ${selectedModel === m.id ? 'active' : ''}`}
-                onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
-              >
-                <span className="node-gen-model-icon-sm">{m.icon}</span>
-                <div>
-                  <div className="node-gen-model-name">{m.name}</div>
-                  <div className="node-gen-model-provider">{m.provider}</div>
-                </div>
-              </button>
-            ))}
+            {/* Model category tabs */}
+            <div className="node-gen-model-tabs">
+              {MODEL_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  className={`node-gen-model-tab ${modelCategory === cat.id ? 'active' : ''}`}
+                  onClick={() => setModelCategory(cat.id)}
+                >
+                  {cat.icon} {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Model list */}
+            <div className="node-gen-model-list">
+              {models.length === 0 && (
+                <div className="node-gen-no-models">该分类无可用模型，请在设置中启用</div>
+              )}
+              {models.map(m => (
+                <button
+                  key={`${m.providerId}-${m.id}-${m.modelType}`}
+                  className={`node-gen-model-option ${selectedModel === m.id ? 'active' : ''}`}
+                  onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
+                >
+                  <span className="node-gen-model-icon-sm">{m.icon}</span>
+                  <div>
+                    <div className="node-gen-model-name">{m.name}</div>
+                    <div className="node-gen-model-provider">{m.provider}</div>
+                  </div>
+                  <span className="node-gen-model-type-badge">
+                    {m.modelType === 'chat' ? '📝' : 
+                     m.modelType.includes('image') ? '🖼️' : '🎬'}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

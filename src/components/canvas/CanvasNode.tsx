@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function CanvasNode({ node }: Props) {
-  const { selectedNodeId, selectNode, moveNode, startConnection, endConnection, connectingFrom, saveToStorage } = useCanvasStore();
+  const { selectedNodeId, selectNode, moveNode, startConnection, endConnection, connectingFrom, saveToStorage, removeNode } = useCanvasStore();
   const isSelected = selectedNodeId === node.id;
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, nodeX: 0, nodeY: 0 });
@@ -96,8 +96,18 @@ export default function CanvasNode({ node }: Props) {
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* Node Label */}
-      <div className="canvas-node-label">{node.label}</div>
+      {/* Node Label + Delete button */}
+      <div className="canvas-node-label">
+        {node.label}
+        {isSelected && (
+          <button
+            className="canvas-node-delete"
+            onClick={(e) => { e.stopPropagation(); removeNode(node.id); saveToStorage(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="删除节点"
+          >✕</button>
+        )}
+      </div>
 
       {/* Left Port */}
       <button
@@ -127,7 +137,14 @@ export default function CanvasNode({ node }: Props) {
         <div className="canvas-node-status generating">生成中...</div>
       )}
       {node.status === 'error' && (
-        <div className="canvas-node-status error">{node.error || '错误'}</div>
+        <div
+          className="canvas-node-status error"
+          onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().updateNode(node.id, { status: 'idle', error: undefined }); }}
+          title="点击清除错误"
+          style={{ cursor: 'pointer' }}
+        >
+          {node.error || '错误'} ✕
+        </div>
       )}
 
       {/* Node-attached generation panel (shows when selected) */}

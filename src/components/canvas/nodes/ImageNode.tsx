@@ -66,6 +66,10 @@ export default function ImageNode({ node }: Props) {
           />
           ↑ 上传替换
         </label>
+        <button className="node-mode-btn" onClick={() => {
+          setImgError(false);
+          updateNode(node.id, { imageUrl: undefined, resultUrl: undefined, status: 'idle', error: undefined });
+        }}>🔄 重置节点</button>
       </div>
     );
   }

@@ -80,7 +80,10 @@ export default function InfiniteCanvas() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const { selectedNodeId, removeNode } = useCanvasStore.getState();
         if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
-        if (selectedNodeId) removeNode(selectedNodeId);
+        if (selectedNodeId) {
+          removeNode(selectedNodeId);
+          useCanvasStore.getState().saveToStorage();
+        }
       }
       if (e.key === 'Escape') {
         cancelConnection();

@@ -15,7 +15,12 @@ export default function CanvasToolbar() {
   };
 
   const handleAdd = () => {
-    openAddMenu(200, 300);
+    // Stagger position based on existing node count to prevent overlap
+    const { nodes, viewportX, viewportY, zoom } = useCanvasStore.getState();
+    const offset = nodes.length * 50;
+    const cx = (-viewportX + 400 + offset) / zoom;
+    const cy = (-viewportY + 300 + (offset % 200)) / zoom;
+    openAddMenu(cx, cy);
   };
 
   const assetCategories = ['全部', '人物', '场景', '物品', '风格', '其他'];

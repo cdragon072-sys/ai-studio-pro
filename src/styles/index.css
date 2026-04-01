@@ -3313,3 +3313,32 @@ textarea.input {
   color: #c4b5fd;
   box-shadow: 0 0 8px rgba(139,92,246,0.15);
 }
+
+/* Node Delete Button */
+.canvas-node-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.canvas-node-delete {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #f87171;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  line-height: 1;
+  padding: 0;
+  margin-left: auto;
+}
+.canvas-node-delete:hover {
+  background: rgba(239,68,68,0.35);
+  border-color: rgba(239,68,68,0.6);
+  transform: scale(1.15);
+}
